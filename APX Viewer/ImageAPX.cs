@@ -30,11 +30,12 @@ namespace APX_Viewer
             palBits = readShort();
             palCount = readShort();
 
-            Debug.WriteLine("Palette bits: " + palBits);
+            Debug.WriteLine("Image Offset: " + filePos);
             Debug.WriteLine("Pixel bits: " + pixelBits);
             Debug.WriteLine("Image dimensions: " + width + " X " + height);
             Debug.WriteLine("Number of mipmaps: " + mipmaps);
-            
+            Debug.WriteLine("Palette bits: " + palBits);
+
             filePos += (int)(0x8 + width * height * pixelBits / 8);
 
             // Load palette
@@ -53,26 +54,9 @@ namespace APX_Viewer
             filePos = filestart + 0x20;
 
             img = new Bitmap(width, height);
-            Graphics gfx = Graphics.FromImage(img);
-            gfx.Clear(Color.Transparent);
 
-            byte brushIndex;
-            for (int y = 0; y < height; y++)
-                for (int x = 0; x < width; x++)
-                {
-                    brushIndex = readByte();
+            DrawImageWithPaletteBrushes(img, pixelBits, filePos, palBrushes);
 
-                    if (pixelBits == 4)  // Two brushes per byte
-                    {
-                        gfx.FillRectangle(palBrushes[brushIndex >> 4], x + 1, y, 1, 1);
-                        gfx.FillRectangle(palBrushes[brushIndex & 0x0F], x, y, 1, 1);
-                        x++;
-                    }
-                    if (pixelBits == 8)
-                    {
-                        gfx.FillRectangle(palBrushes[brushIndex], x, y, 1, 1);
-                    }
-                }
         }
 
 
@@ -135,5 +119,33 @@ namespace APX_Viewer
             return palette;
         }
 
+        void DrawImageWithPaletteBrushes(Bitmap img, int pixelBits, int brushIndexStartOffset, List<SolidBrush> palBrushes)
+        {
+            filePos = brushIndexStartOffset;
+
+            Graphics gfx = Graphics.FromImage(img);
+            gfx.Clear(Color.Transparent);
+
+            byte brushIndex;
+
+            for (int y = 0; y < img.Height; y++)
+            {
+                for (int x = 0; x < img.Width; x++)
+                {
+                    brushIndex = readByte();
+
+                    if (pixelBits == 4)  // Two brushes per byte
+                    {
+                        gfx.FillRectangle(palBrushes[brushIndex >> 4], x + 1, y, 1, 1);
+                        gfx.FillRectangle(palBrushes[brushIndex & 0x0F], x, y, 1, 1);
+                        x++;
+                    }
+                    if (pixelBits == 8)
+                    {
+                        gfx.FillRectangle(palBrushes[brushIndex], x, y, 1, 1);
+                    }
+                }
+            }
+        }
     }
 }
