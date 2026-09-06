@@ -19,92 +19,120 @@ namespace APX_Viewer
             ushort mipmaps;
             ushort palBits;
             ushort palCount;
+
             int filestart = filePos;
             filePos += 0xC;
+            
             pixelBits = readShort();
             width = readShort();
             height = readShort();
             mipmaps = readShort();
             palBits = readShort();
             palCount = readShort();
+
             Debug.WriteLine("Palette bits: " + palBits);
             Debug.WriteLine("Pixel bits: " + pixelBits);
             Debug.WriteLine("Image dimensions: " + width + " X " + height);
             Debug.WriteLine("Number of mipmaps: " + mipmaps);
+            
+            filePos += (int)(0x8 + width * height * pixelBits / 8);
 
+            // Load palette
             int palEntries = (int)Math.Pow(2, pixelBits);
 
-            List<Color> pal = new List<Color>();
+            List<Color> pal = LoadColorPalette(filePos, palEntries, palBits);
+
+            // Make palette brushes
             List<SolidBrush> palBrushes = new List<SolidBrush>();
-            filePos += (int)(0x8 + width * height * pixelBits / 8);
-            for (int c = 0; c < palEntries; c++)
-            {
-                if (palBits == 4)
-                {
-                    byte b1 = readByte();
-                    byte b2 = readByte();
-                    pal.Add(Color.FromArgb(b1 & 0xF0, (b1 << 4) & 0xF0, b2 & 0xF0, (b2 << 4) & 0xF0));
-                }
-                if (palBits == 16) //two bytes per entry
-                {
-                    //1555 format
-                    ushort s = readShort();
-                    byte a = (byte)(((s & 0x8000) == 0x8000) ? 0xFF : 0x00);
-                    //byte b = (byte)((s >> 7) | (s >> 12)); //too intense!
-                    //byte g = (byte)((s >> 2) | (s >> 7));
-                    //byte r = (byte)((s << 3) | (s >> 2));
-                    byte b = (byte)((s >> 7) & 0xF1);
-                    byte g = (byte)((s >> 2) & 0xF1);
-                    byte r = (byte)((s << 3) & 0xF1);
-                    //pal.Add(Color.FromArgb(b2 & 0xF0, (b1 << 4) & 0xF0, b1 & 0xF0, (b2 << 4) & 0xF0));
-                    pal.Add(Color.FromArgb(a, r, g, b));
-                    //Debug.WriteLine("entry " + c + ": " + b1.ToString("X") + ", " + b2.ToString("X"));
-                }
-                if (palBits == 32)
-                {
-                    if (wii) //wii order
-                    {
 
-                        byte a = readByte();
-                        byte b = readByte();
-                        byte g = readByte();
-                        byte r = readByte();
-                        pal.Add(Color.FromArgb(a, r, g, b));
-                    }
-
-                    else //ps2 order
-                    {
-                        byte r = readByte();
-                        byte g = readByte();
-                        byte b = readByte();
-                        byte a = readByte();
-                        pal.Add(Color.FromArgb(a, r, g, b));
-                    }
-                }
-                //g.FillRectangle(new SolidBrush(pal[c]), 0+c*20, 0, 20, 50);
-            }
-            for(int i = 0; i < pal.Count; i++)
+            for (int i = 0; i < pal.Count; i++)
                 palBrushes.Add(new SolidBrush(pal[i]));
             //palette loaded, now draw the map!
+
+            // Draw the image using palette brushes
+            filePos = filestart + 0x20;
+
             img = new Bitmap(width, height);
             Graphics gfx = Graphics.FromImage(img);
             gfx.Clear(Color.Transparent);
-            filePos = filestart + 0x20;
+
+            byte brushIndex;
             for (int y = 0; y < height; y++)
                 for (int x = 0; x < width; x++)
                 {
-                    if (pixelBits == 4)
+                    brushIndex = readByte();
+
+                    if (pixelBits == 4)  // Two brushes per byte
                     {
-                        byte b = readByte();
-                        gfx.FillRectangle(palBrushes[b >> 4], x + 1, y, 1, 1);
-                        gfx.FillRectangle(palBrushes[b & 0x0F], x, y, 1, 1);
+                        gfx.FillRectangle(palBrushes[brushIndex >> 4], x + 1, y, 1, 1);
+                        gfx.FillRectangle(palBrushes[brushIndex & 0x0F], x, y, 1, 1);
                         x++;
                     }
                     if (pixelBits == 8)
                     {
-                        gfx.FillRectangle(palBrushes[readByte()], x, y, 1, 1);
+                        gfx.FillRectangle(palBrushes[brushIndex], x, y, 1, 1);
                     }
                 }
+        }
+
+
+        public List<Color> LoadColorPalette(int palOffset, int palEntries, int palBits)
+        {
+            filePos = palOffset;
+
+            List<Color> palette = new List<Color>();
+
+            for (int c = 0; c < palEntries; c++)
+            {
+                Color palColor = Color.Empty;
+
+                byte a = 0x0;
+                byte r = 0x0;
+                byte g = 0x0;
+                byte b = 0x0;
+
+                if (palBits == 4)
+                {
+                    byte arByte = readByte();
+                    byte gbByte = readByte();
+
+                    a = (byte)(arByte & 0xF0);
+                    r = (byte)((arByte << 4) & 0xF0);
+                    g = (byte)(gbByte & 0xF0);
+                    b = (byte)((gbByte << 4) & 0xF0);
+                }
+                else if (palBits == 16) //ABGR1555 format, two bytes per entry
+                {
+                    ushort s = readShort();
+                    a = (byte)(((s & 0x8000) == 0x8000) ? 0xFF : 0x00);
+                    b = (byte)((s >> 7) & 0xF1);
+                    g = (byte)((s >> 2) & 0xF1);
+                    r = (byte)((s << 3) & 0xF1);
+                }
+                else if (palBits == 32)
+                {
+                    if (wii) //wii order
+                    {
+                        a = readByte();
+                        b = readByte();
+                        g = readByte();
+                        r = readByte();
+                    }
+                    else //ps2 order
+                    {
+                        r = readByte();
+                        g = readByte();
+                        b = readByte();
+                        a = readByte();
+                    }
+                }
+
+                palColor = Color.FromArgb(a, r, g, b);
+                palette.Add(palColor);
+                //g.FillRectangle(new SolidBrush(pal[c]), 0+c*20, 0, 20, 50);
+            }
+
+            return palette;
         }
 
     }
