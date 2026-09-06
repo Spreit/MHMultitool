@@ -40,11 +40,12 @@ namespace APX_Viewer
                 imgsstart.Add(readInt());
                 imgssize.Add(readInt());
             }
-            
+
             //load header pointers
             for (int i = 0; i < imgCount; i++)
             {
-                filePos = (int)imgsstart[i];
+                filePos = (int)imgsstart[i];  
+
 
                 if (!filename.EndsWith("_tex.bin"))
                 {
@@ -62,6 +63,7 @@ namespace APX_Viewer
                 }
                 else
                 {
+                    Debug.WriteLine("---- Texture " + i + " ----");
                     string test = readString(4);
                     filePos -= 4;
 

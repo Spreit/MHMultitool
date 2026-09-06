@@ -29,8 +29,7 @@ namespace APX_Viewer
             imgdata dat = new imgdata();
 
             int startpos = filePos;
-            filePos += 4;
-            
+            readString(4);  // Signature "TIM2"
             readByte(); //version
             byte spacer = readByte(); //alignment
             dat.mipmaps = readShort(); //number of images
