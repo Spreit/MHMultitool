@@ -57,13 +57,16 @@ namespace APX_Viewer
             Debug.WriteLine("Pixel bits: " + dat.pixelBits);
             Debug.WriteLine("Image dimensions: " + dat.width + " X " + dat.height);
             Debug.WriteLine("Number of mipmaps: " + dat.mipmaps);
+
             //palettes
             filePos = (int)(startpos + 0x40 + dat.palOffset + spacer * 0xC0);
+            
             int palEntries;
             //if (palCount == 0)
             palEntries = (int)Math.Pow(2, dat.pixelBits);
             //else
             //    palEntries = palCount;
+            
             List<Color> pal = new List<Color>();
             List<SolidBrush> palBrushes = new List<SolidBrush>();
             for (int c = 0; c < palEntries; c++)

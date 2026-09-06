@@ -147,7 +147,7 @@ namespace APX_Viewer
             filePos = brushIndexStartOffset;
 
             Graphics gfx = Graphics.FromImage(img);
-            gfx.Clear(Color.White);
+            gfx.Clear(Color.Transparent);
 
             byte brushIndex;
 
