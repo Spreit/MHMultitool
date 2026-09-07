@@ -179,9 +179,46 @@ namespace APX_Viewer
                     suf = "inf"; //quest info string tables
                 else if (magic == 0x1A636170)
                     suf = "pac"; //npc dialogue tables
+                if (!Directory.Exists(Directory.GetCurrentDirectory() + "\\decompress"))
+                    Directory.CreateDirectory(Directory.GetCurrentDirectory() + "\\decompress");
                 using (BinaryWriter bw = new BinaryWriter(File.Create(Directory.GetCurrentDirectory() + "\\decompress\\mhf" + suf + ".bin")))
                     for (int i = 0; i < bufSize; i++)
                         bw.Write(readByte());
+                if (magic == 0x1A666E69)
+                {
+                    filePos = 0x14;
+                    uint ptr = readInt();
+                    List<ushort> lengths = new List<ushort>();
+                    List<uint> ptrs = new List<uint>();
+                    filePos = (int)ptr;
+                    while(true)
+                    {
+                        
+                        ushort t = readShort();
+                        if (t == 0)
+                            break;
+                        lengths.Add(readShort());
+                        ptrs.Add(readInt()); //has the table of ptrs to subtables now
+                    }
+                    uint q = 0;
+                    using (StreamWriter tw = File.CreateText(Directory.GetCurrentDirectory() + "\\decompress\\qlist.txt"))
+                        for(int i = 0; i < ptrs.Count; i++)
+                        {
+                            //for each table,
+                            for(int e = 0; e < lengths[i]; e++)
+                            {
+                                filePos = (int)(ptrs[i] + e * 4);
+                                uint entry = readInt();
+                                if (entry == 0)
+                                    continue;
+                                filePos = (int)(entry + 0x28);
+                                uint textBloc = readInt();
+                                filePos = (int)(textBloc);
+                                filePos = (int)(readInt());
+                                tw.WriteLine(readJISString());
+                            }
+                        }
+                }
                 return;
             }
             data = new List<List<byte>>();
