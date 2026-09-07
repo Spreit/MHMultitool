@@ -69,19 +69,23 @@ namespace APX_Viewer
 
             gatheringSpots = new List<GatheringSpot>();
             areaOrigins = new List<AreaOrigin>();
+
             uint dataptr = readInt(); //pointer to quest data (this gets copied into lobby.bin): 0x40 for base Mh1, 0x48 for MHG, 0x74 for MH2 (except arena matches use 0x64?), 0xC0 for MHFZZ, 0x3C for mhp1
             game = (Game)dataptr;
             uint playerptr = readInt(); //player block, always 0x70?
             uint boxptr = readInt(); //box block
             uint rewardsptr = readInt(); //reward block
+
             uint goalptr = readInt(); //goal block; @ 0x10
             uint entsptr = readInt(); //entity block
             uint monptr = readInt(); //monster block
             uint linkptr = 0;//link block
+
             uint originsptr = 0; //origins block; @ 0x20
             uint campptr = 0; //camp block
             uint gatherptr = 0; //gathering points block
             uint mapobjptr = 0; //map objects block
+
             if (game != Game.MHP)
             {
                 linkptr = readInt(); //link block
@@ -95,6 +99,7 @@ namespace APX_Viewer
                 uint camp = readInt(); //?
                 mapobjptr = readInt(); //map objects block
             }
+            
             uint resultptr = readInt(); //result text block; @ 0x30
             uint pattern;
             uint online;
@@ -235,14 +240,7 @@ namespace APX_Viewer
             }
 
             //player block
-            filePos = (int)playerptr;
-            for (int i = 0; i < 4; i++)
-            {
-                readInt(); //starting room ID
-                readFloat(); //X
-                readFloat(); //Y
-                readFloat(); //Z
-            }
+            loadPlayerBlock(playerptr);
 
             //entities block
             filePos = (int)entsptr;
@@ -532,36 +530,8 @@ namespace APX_Viewer
             }
 
             //box block
-            filePos = (int)boxptr;
-            if (game != Game.MH2)
-                while (true)
-                {
-                    ushort v = readShort(); //item ID
-                    readShort(); //item quantity
-                    if (v == 0)
-                        break;
-                }
-            else
-            {
-                for (int i = 0; i < 0x18; i++) //starting items
-                {
-                    readShort(); //item ID
-                    readShort(); //quantity
-                }
-                for (int i = 0; i < 0x8; i++) //subquest A rewards
-                {
-                    readShort(); //item ID
-                    readShort(); //quantity
-                }
-                for (int i = 0; i < 8; i++) //subquest B rewards
-                {
-                    readShort(); //Item ID
-                    readShort(); //quantity
-                }
-            }
+            loadBoxBlock(boxptr);
 
-
-            
             if(game == Game.MH2)
             {
                 //unknown block
@@ -773,35 +743,7 @@ namespace APX_Viewer
             }
 
             //rewards block
-            filePos = (int)rewardsptr;
-            {
-                List<uint> ptrs = new List<uint>();
-                while (true)
-                {
-                    uint v1 = readInt(); //reward type; 0x8000 mh1 quest complete, 1 head break? 4 wing/back break? 5 claw break? 21-25 delivery rewards (multiples of 5 starting at 0.).
-                                         //11 - 15 are repel rewards? 2 - 20 are 3C758C bit (#-2). 0 is guaranteed drop, 1 is any part break?
-                                         //so for specific part breaks i need to figure out how the bits are set
-                                         //MH2: 8001 for main objective, 8002 for sub a, 8003 for sub b
-                    uint v2 = readInt(); //reward pointer
-                    if (v1 == 0xFFFF)
-                        break;
-                    ptrs.Add(v2);
-                }
-                for (int i = 0; i < ptrs.Count; i++)
-                {
-                    filePos = (int)ptrs[i];
-                    while (true)
-                    {
-                        uint v1 = readShort(); //odds
-                        if (v1 == 0xFFFF)
-                            break;
-                        readShort(); //item
-                        readShort(); //qty
-                    }
-                    if ((filePos % 4) == 2)
-                        readShort(); //align, only happens sometimes?
-                }
-            }
+            loadRewardBlock(rewardsptr);
 
             //done reading file?
             //Debug.WriteLine("done reading file, now checking coverage");
@@ -841,6 +783,105 @@ namespace APX_Viewer
             //Debug.WriteLine("quest type: " + qtype);
             //if (fulu != 0)
             //    Debug.WriteLine("fulu: " + fulu.ToString("X"));
+        }
+
+        void loadPlayerBlock(uint offset)
+        {
+            filePos = (int)offset;
+
+            for (int i = 0; i < 4; i++)
+            {
+                readInt(); //starting room ID
+                readFloat(); //X
+                readFloat(); //Y
+                readFloat(); //Z
+            }
+        }
+
+        void loadBoxBlock(uint offset)
+        {
+            filePos = (int)offset;
+
+            if (game != Game.MH2)
+                while (true)
+                {
+                    ushort v = readShort(); //item ID
+                    readShort(); //item quantity
+                    if (v == 0)
+                        break;
+                }
+            else
+            {
+                for (int i = 0; i < 24; i++) //starting items
+                {
+                    readShort(); //item ID
+                    readShort(); //quantity
+                }
+                for (int i = 0; i < 8; i++) //subquest A rewards
+                {
+                    readShort(); //item ID
+                    readShort(); //quantity
+                }
+                for (int i = 0; i < 8; i++) //subquest B rewards
+                {
+                    readShort(); //Item ID
+                    readShort(); //quantity
+                }
+            }
+        }
+
+
+        public struct QuestRewardItem
+        {
+            public ushort chance;
+            public ushort itemID;
+            public ushort amount;
+        }
+
+
+        void loadRewardBlock(uint offset)
+        {
+            filePos = (int)offset;
+
+            List<QuestRewardItem> questRewardItems = new List<QuestRewardItem>();
+
+            {
+                // Reward pointers
+                List<uint> ptrs = new List<uint>();
+                while (true)
+                {
+                    uint v1 = readInt(); //reward type; 0x8000 mh1 quest complete, 1 head break? 4 wing/back break? 5 claw break? 21-25 delivery rewards (multiples of 5 starting at 0.).
+                                         //11 - 15 are repel rewards? 2 - 20 are 3C758C bit (#-2). 0 is guaranteed drop, 1 is any part break?
+                                         //so for specific part breaks i need to figure out how the bits are set
+                                         //MH2: 8001 for main objective, 8002 for sub a, 8003 for sub b
+                    uint v2 = readInt(); //reward pointer
+                    if (v1 == 0xFFFF)
+                        break;
+                    ptrs.Add(v2);
+                }
+
+                // Get all possible quest reward items
+                for (int i = 0; i < ptrs.Count; i++)
+                {
+                    filePos = (int)ptrs[i];
+                    while (true)
+                    {
+                        QuestRewardItem questRewardItem = new QuestRewardItem();
+
+                        ushort chance = readShort();
+                        if (chance == 0xFF) // Is it 0xFFFF in MH2 or other game?
+                            break;
+
+                        questRewardItem.chance = chance;
+                        questRewardItem.itemID = readShort();
+                        questRewardItem.amount = readShort();
+
+                        questRewardItems.Add(questRewardItem);
+                    }
+                    if ((filePos % 4) == 2)
+                        readShort(); //align, only happens sometimes?
+                }
+            }
         }
     }
 }
