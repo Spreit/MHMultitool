@@ -51,7 +51,7 @@ namespace APX_Viewer
                     "X do stuff with 0x11s until 0x12", "X increment 3C7444 then advance to 0x12", "X increment 3C7444", "X null", "X null", "X null", "Player Death label", "jump to bookmark",
                     "wait until action is finished", "X null", "Label", "Start quest timer", "jump to label", "X check item goal 2", "trigger victory END", "trigger failure END",
                     "change wave/quest state", "check player carrying item", "check delivery goal", "jump to label when delivery done", "Check Monster goal left", "Time Over message + packet", "X send packet", "X null",
-                    "fatalis health check", "fatalis repel fail start", "lao health check", "lao repel fail start", "jump to label when Fort falls", "sync victory?", "G unknown (ykk, cphd, and rlos) ", "G stock supply box"
+                    "fatalis health check", "fatalis repel fail start", "lao health check", "lao repel fail start", "jump to label when Fort falls", "sync victory?", "G unknown (ykk, cphd, and rlos) ", "Change timeover label"
         };
 
         public List<ConstantsLocales.Pushpin> pins = new List<ConstantsLocales.Pushpin>();
@@ -92,8 +92,8 @@ namespace APX_Viewer
             }
             else
             {
-                uint camp = readInt(); //?
-                mapobjptr = readInt(); //map objects block
+                uint camp = readInt(); //? camp map?
+                gatherptr = readInt(); //gathering block
             }
             uint resultptr = readInt(); //result text block; @ 0x30
             uint pattern;
@@ -111,7 +111,7 @@ namespace APX_Viewer
                     readByte(); //what monster carves
                     readByte(); //what spawn to use
                     gextra = readByte(); //monster size class
-                    readByte();//supply delivery type is byte 2:
+                    readByte();//supply delivery type:
                     readByte();//0 is all available at start :)
                     readByte();//1 is random supply delivery
                     //2 is after arg3 monster is slain arg4 times!
@@ -168,7 +168,7 @@ namespace APX_Viewer
                 readInt(); //subquest 2 reward
             }
             readInt(); //time limit, in ticks (30hz)
-            locale = readInt(); //locale 1-indexed (fort, fnh, desert, volcano, jungle, castle)
+            locale = readInt(); //locale 1-indexed (fort, fnh, desert, swamp, volcano, jungle, castle)
             uint descriptionptr = readInt(); //pointer to description block?
             readShort(); //quest's restriction
             readShort(); //quest's internal ID
@@ -263,7 +263,7 @@ namespace APX_Viewer
                 while (true)
                 {
                     uint v1 = readInt(); //room ID
-                    uint v2 = readInt(); //blank?
+                    uint v2 = readInt(); //blank? 0x9999 if only wave is empty
                     uint v3 = readInt(); //types pointer
                     uint v4 = readInt(); //data pointer
                     if (v1 == 0)
@@ -373,44 +373,50 @@ namespace APX_Viewer
                 {
                     ushort v1 = readShort(); //goal type
 					//need to document: 2D, 16
-					//00 waits until 3C7474 is 0
-					//01 waits until enemy value(?) check is true
+					//00 waits until 3C7474 is 0 (decremented on monster slay?)
+					//01 waits until eall enemy goals are clear
 					//02 sets enemy species and qty
 					//03 waits until item quantity check is true
-					//04 sets item ID and qty
+					//04 sets item ID and qty for delivery goal
 					//05 sets 3C744C (set timer)
 					//06 decrements 3C744C until zero (wait for timer)
 					//07 is display ID message (3 is first aux)
-					//08 loops back to 0B if item not complete, waits if item(?) isn't arg
+					//08 loops back to 0B (bookmark) if 03 fails, else it waits until player is in map arg1
 					//09 is null?
-					//0A seems to fetch quest supplies? -1 is always, -3 is in situations? 
-					//0B denotes a message condition follows? a divider?
-					//0D sets 3C7450 to arg
-					//0E increases 3C7450 by arg
-					//0F scans ahead until 0x12 or arg -4 or arg == 3F34C1
-					//10 does stuff with all 0x11s until 0x12
-					//11 increases 3C7444, advance to 0x12
-					//12 increases 3C7444
-					//17 stores 3C7478 to 3C7476, then jumps to it
+					//0A seems to fetch quest supplies? -1 is always, -3 is if gs or bg, else arg is class
+					//0B bookmark
+					//0D sets 3C7450 to arg (set time left, in ticks)
+					//0E increases 3C7450 by arg (increment time left, in ticks)
+					//0F conditional start, look for playernum or -4 as arg, ends at 0x12 (use 0x11)
+					//10 conditional start, look for 0x11s, if arg is -3, match bg (class 1 or 5)
+					//   if arg is -2, if class 0, 2, 3, 4, do
+					//   if arg is -4, or arg is class, do
+					//11 start of condition branch
+					//12 end of condition block!
+					//16 is searched for on Quest_restart, when player dies
+					//17 stores 3C7478 to 3C7476, then jumps to it (return to bookmark)
 					//18 waits until action is no longer ocurring
-					//1A is null?
-					//1B shows/starts timer. has an argument?
-					//1C skips to the next 1A?
+					//1A is label
+					//1B shows/starts timer. arg is label to jump to on time over
+					//1C jumps to the specified label
 					//1D checks the item quantity?
 					//1E is trigger victory, end parse
 					//1F is trigger failure, end parse
-					//20 sends a packet...
-					//21 checks the third item datum?
-					//22 is a "share item check"
+					//20 sets and syncs state arg1
+					//21 waits for specified item in inventory? or does it have to be carried like egg?
+					//22 is a "share item check" (checks if all items are delivered)
+					//23 sets the label to jump to when items are delivered
 					//24 checks the enemy quantity
-					//25 shows a message and sends packet
-					//26 sends a packet
+					//25 shows a message and sends packet (time over?? failed arg != 0)
+					//26 sends a packet (alternate for win?? presuccess arg != 0)
 					//28 skips to 29 unless ??? (argument is repel damage)
 					//2A checks fatalis health, skips until 2B unless dead?
-					//2C sets a variable (3C758F)
-					//2D waits for something
-					//FFFE sends a packet
-					//FFFF does the wyvern kill cam, sends packet
+					//2C sets a variable (3C758F), the label to jump to on fort falling
+					//2D waits for all players to report they've achieved victory
+					//2E sets state arg3 after arg2 arg1s have been slain
+					//2F changes the time over label
+					//FFFE sends a packet (camerafail, arg 0)
+					//FFFF does the wyvern kill cam, sends packet (camerasuccess, arg 0)
                     ushort v2 = readShort(); //goal ID (cap quests use "wyvern" item with deliver goal here)
                     uint v3 = readInt(); //goal quantity
                     /*if (v1 == 0xFFFF)
@@ -458,7 +464,7 @@ namespace APX_Viewer
 
             //camp block? does this influence anything?
             filePos = (int)campptr;
-            readInt(); //locale ID
+            readInt(); //battle music
             readInt(); //map ID
             readInt(); //0?
             readInt(); //0?

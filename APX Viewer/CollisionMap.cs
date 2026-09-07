@@ -191,7 +191,7 @@ namespace APX_Viewer
                             default:
                                 break;
                         }
-                    else if (false)
+                    else if (true)
                         switch (GroundPolys[i].flags & 0x0000FF00)
                         {
                             case 0x00000100: //red grass/soft soil
