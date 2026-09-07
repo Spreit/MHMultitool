@@ -17,8 +17,8 @@ namespace APX_Viewer
             public uint dataPtr;
         }
 
-        public enum GatherType { Normal, unk1, unk2, Pickaxe, Net}
-        public enum Game { MH1 = 0x40, MHG = 0x48, MH2 = 0x74, MH2Arena = 0x64, MHFZZ = 0xC0, MHP = 0x3C}
+        public enum GatherType { Normal, unk1, unk2, Pickaxe, Net }
+        public enum Game { MH1 = 0x40, MHG = 0x48, MH2 = 0x74, MH2Arena = 0x64, MHFZZ = 0xC0, MHP = 0x3C }
         public enum DosObjective { Hunt = 0x01, Deliver = 0x02, Damage = 0x04 }
 
         public Game game;
@@ -41,6 +41,26 @@ namespace APX_Viewer
             public float x;
             public float y;
         }
+
+        public struct PlayerStartPosition
+        {
+            public uint roomId;
+            public float x;
+            public float y;
+            public float z;
+        }
+
+        public struct Item
+        {
+            public ushort itemID;
+            public ushort amount;
+        }
+
+        public class SupplyBox
+        {
+            public List<Item> items;
+        }
+
 
         public struct QuestRewardItem
         {
@@ -376,6 +396,7 @@ namespace APX_Viewer
                 uint p7 = readInt(); //requestor
                 uint p8 = readInt(); //description?
             }
+
             filePos = (int)p1;
             /*while (true)
             {
@@ -386,40 +407,44 @@ namespace APX_Viewer
             */
             string qname = readJISString();
             Debug.WriteLine(qname);
+
+            void ez_alighnment()
+            {
+                while (true)
+                {
+                    uint v = readInt(); //ez alignment this way
+                    if ((v & 0xFF) == 0 | (v & 0xFF00) == 0 | (v & 0xFF0000) == 0 | (v & 0xFF000000) == 0)
+                        break;
+                }
+            }
+
             filePos = (int)p2;
-            while (true)
-            {
-                uint v = readInt(); //ez alignment this way
-                if ((v & 0xFF) == 0 | (v & 0xFF00) == 0 | (v & 0xFF0000) == 0 | (v & 0xFF000000) == 0)
-                    break;
-            }
+            ez_alighnment();
             filePos = (int)p3;
-            while (true)
-            {
-                uint v = readInt(); //ez alignment this way
-                if ((v & 0xFF) == 0 | (v & 0xFF00) == 0 | (v & 0xFF0000) == 0 | (v & 0xFF000000) == 0)
-                    break;
-            }
+            ez_alighnment();
             filePos = (int)p4;
-            while (true)
-            {
-                uint v = readInt(); //ez alignment this way
-                if ((v & 0xFF) == 0 | (v & 0xFF00) == 0 | (v & 0xFF0000) == 0 | (v & 0xFF000000) == 0)
-                    break;
-            }
+            ez_alighnment();
         }
 
-        void LoadPlayerBlock(uint offset)
+        public List<PlayerStartPosition> LoadPlayerBlock(uint offset)
         {
             filePos = (int)offset;
 
+            List<PlayerStartPosition> startPositions = new List<PlayerStartPosition>();
+
             for (int i = 0; i < 4; i++)
             {
-                readInt(); //starting room ID
-                readFloat(); //X
-                readFloat(); //Y
-                readFloat(); //Z
+                PlayerStartPosition startPosition;
+
+                startPosition.roomId = readInt(); //starting room ID
+                startPosition.x = readFloat();
+                startPosition.y = readFloat();
+                startPosition.z = readFloat();
+
+                startPositions.Add(startPosition);
             }
+
+            return startPositions;
         }
 
         void LoadEntitiesBlock(uint offset)
@@ -738,16 +763,30 @@ namespace APX_Viewer
         {
             filePos = (int)offset;
 
+            List<Item> items = new List<Item>;
+
             if (game != Game.MH2)
                 while (true)
                 {
-                    ushort v = readShort(); //item ID
-                    readShort(); //item quantity
-                    if (v == 0)
+                    Item item;
+
+                    ushort itemID = readShort();
+                    ushort amount = readShort();  // Needs to be read
+
+                    if (itemID == 0)
                         break;
+
+                    item.itemID = itemID;
+                    item.amount = amount;
+
+                    items.Add(item);
                 }
             else
             {
+                // 40 slots total:
+                // First 24 slots - starting items
+                // 25-32 - Subquest A reward
+                // 33-40 - Subquest B reward
                 for (int i = 0; i < 24; i++) //starting items
                 {
                     readShort(); //item ID
@@ -857,6 +896,7 @@ namespace APX_Viewer
             List<uint> ptrs = new List<uint>();
             for (int i = 0; i < 4; i++)
                 ptrs.Add(readInt());
+
             for (int i = 0; i < 4; i++)
             {
                 filePos = (int)ptrs[i];
@@ -866,18 +906,26 @@ namespace APX_Viewer
                     subptrs.Add(readInt()); //pointer to the fish chances
                     readInt(); //max fish in the pool
                 }
+
                 for (int e = 0; e < 6; e++)
                 {
                     filePos = (int)subptrs[e];
                     while (true)
                     {
-                        byte val = readByte(); //chance
-                        if (val == 0xFF)
+                        byte chance = readByte();
+                        if (chance == 0xFF)
                             break;
-                        readByte(); //Fishie ID, these do NOT match item IDs!
-                                    //00 is nothing, 01 is whetfish, 02 is sushifish, 03 is pin tuna, 04 is popfish, 05 is goldenfish, 06 is sleepyfish, 07 is burst arowana,
-                                    //08 is bomb arowana, 09 is scatterfish, 0A is speartuna, 0B is gast. tuna, 0C is ancient fish, 0D is onpuuo (11C), 0E is snakesalmon, 0F is queen shrimp,
-                                    //10 is g whetfish, 11 is small goldenfish, 12 is silverfish, 13 is g sleepyfish, 14 is g pin tuna, 15 is g popfish, 16 is g arowana, 17 is g gast. tuna. 18 is ---------
+
+                        //Fishie ID, these do NOT match item IDs!
+                        //00 is nothing, 01 is whetfish, 02 is sushifish, 03 is pin tuna,
+                        //04 is popfish, 05 is goldenfish, 06 is sleepyfish, 07 is burst arowana,
+                        //08 is bomb arowana, 09 is scatterfish, 0A is speartuna, 0B is gast. tuna,
+                        //0C is ancient fish, 0D is onpuuo (11C), 0E is snakesalmon, 0F is queen shrimp,
+                        //10 is g whetfish, 11 is small goldenfish, 12 is silverfish, 13 is g sleepyfish,
+                        //14 is g pin tuna, 15 is g popfish, 16 is g arowana, 17 is g gast. tuna.
+                        //18 is ---------
+
+                        byte fishID = readByte();
                     }
                 }
             }
