@@ -56,11 +56,7 @@ namespace APX_Viewer
             public ushort amount;
         }
 
-        public class SupplyBox
-        {
-            public List<Item> items;
-        }
-
+        public List<Item> supplyBox;
 
         public struct QuestRewardItem
         {
@@ -286,7 +282,7 @@ namespace APX_Viewer
 
             //result text block
             Debug.WriteLine("Loading Result Text Block");
-            // LoadResultTextBlock(resultptr);
+            LoadResultTextBlock(resultptr);
 
             //camp block? does this influence anything?
             Debug.WriteLine("Loading Camp Block");
@@ -453,31 +449,40 @@ namespace APX_Viewer
 
             List<uint> entroomlists = new List<uint>();
 
+            // Read pointers to Entity Lists
             while (true)
             {
                 uint val = readInt();
-                if (val != 0)
-                    entroomlists.Add(val);
-                else
+
+                if (val == 0)
                     break;
+
+                entroomlists.Add(val);
             }
+
+            // Read lists
             for (int i = 0; i < entroomlists.Count; i++)
             {
-                //read list
                 filePos = (int)entroomlists[i];
                 List<EntList> els = new List<EntList>();
+
                 while (true)
                 {
                     uint v1 = readInt(); //room ID
                     uint v2 = readInt(); //blank? 0x9999 if only wave is empty
                     uint v3 = readInt(); //types pointer
                     uint v4 = readInt(); //data pointer
+
                     if (v1 == 0)
                         break;
+
                     els.Add(new EntList { mapID = v1, unk = v2, typePtr = v3, dataPtr = v4 });
                 }
+
+                Debug.WriteLine("Reading Enity types");
                 for (int l = 0; l < els.Count; l++)
                 {
+                    Debug.WriteLine("Type index " + l);
                     //read types in the room
                     filePos = (int)els[l].typePtr;
                     readInt(); //first type
@@ -493,11 +498,13 @@ namespace APX_Viewer
                         ushort v1 = readShort(); //ent type
                         readShort(); //model variation
                         readInt(); //the amount of lives this entity has, 0x63 is infinite. highest byte spawn area, sometimes second byte has a value too - respawn after corpse despawn?
+                        
                         readInt(); //0, two shorts? both set to -1 on load
                         readInt(); //0
                         readInt(); //0
                         readInt(); //0
                         readInt(); //0
+
                         readInt(); //z rotation spawn
                         p.X = (int)readFloat(); //X spawn 10294.1, 7789.4
                         readFloat(); //Y spawn
@@ -506,8 +513,10 @@ namespace APX_Viewer
                         readInt(); //0
                         readInt(); //0
                         readInt(); //0
+
                         if (v1 == 0xFFFF)
                             break;
+
                         //if (els[l].mapID == 0x27)
                         //    pins.Add(p);
                     }
@@ -582,52 +591,55 @@ namespace APX_Viewer
             //Debug.WriteLine("----------------------");
             while (true)
             {
-                ushort v1 = readShort(); //goal type
-                                            //need to document: 2D, 16
-                                            //00 waits until 3C7474 is 0 (decremented on monster slay?)
-                                            //01 waits until eall enemy goals are clear
-                                            //02 sets enemy species and qty
-                                            //03 waits until item quantity check is true
-                                            //04 sets item ID and qty for delivery goal
-                                            //05 sets 3C744C (set timer)
-                                            //06 decrements 3C744C until zero (wait for timer)
-                                            //07 is display ID message (3 is first aux)
-                                            //08 loops back to 0B (bookmark) if 03 fails, else it waits until player is in map arg1
-                                            //09 is null?
-                                            //0A seems to fetch quest supplies? -1 is always, -3 is if gs or bg, else arg is class
-                                            //0B bookmark
-                                            //0D sets 3C7450 to arg (set time left, in ticks)
-                                            //0E increases 3C7450 by arg (increment time left, in ticks)
-                                            //0F conditional start, look for playernum or -4 as arg, ends at 0x12 (use 0x11)
-                                            //10 conditional start, look for 0x11s, if arg is -3, match bg (class 1 or 5)
-                                            //   if arg is -2, if class 0, 2, 3, 4, do
-                                            //   if arg is -4, or arg is class, do
-                                            //11 start of condition branch
-                                            //12 end of condition block!
-                                            //16 is searched for on Quest_restart, when player dies
-                                            //17 stores 3C7478 to 3C7476, then jumps to it (return to bookmark)
-                                            //18 waits until action is no longer ocurring
-                                            //1A is label
-                                            //1B shows/starts timer. arg is label to jump to on time over
-                                            //1C jumps to the specified label
-                                            //1D checks the item quantity?
-                                            //1E is trigger victory, end parse
-                                            //1F is trigger failure, end parse
-                                            //20 sets and syncs state arg1
-                                            //21 waits for specified item in inventory? or does it have to be carried like egg?
-                                            //22 is a "share item check" (checks if all items are delivered)
-                                            //23 sets the label to jump to when items are delivered
-                                            //24 checks the enemy quantity
-                                            //25 shows a message and sends packet (time over?? failed arg != 0)
-                                            //26 sends a packet (alternate for win?? presuccess arg != 0)
-                                            //28 skips to 29 unless ??? (argument is repel damage)
-                                            //2A checks fatalis health, skips until 2B unless dead?
-                                            //2C sets a variable (3C758F), the label to jump to on fort falling
-                                            //2D waits for all players to report they've achieved victory
-                                            //2E sets state arg3 after arg2 arg1s have been slain
-                                            //2F changes the time over label
-                                            //FFFE sends a packet (camerafail, arg 0)
-                                            //FFFF does the wyvern kill cam, sends packet (camerasuccess, arg 0)
+                ushort v1 = readShort();
+                {
+                    //goal type
+                    //need to document: 2D, 16
+                    //00 waits until 3C7474 is 0 (decremented on monster slay?)
+                    //01 waits until eall enemy goals are clear
+                    //02 sets enemy species and qty
+                    //03 waits until item quantity check is true
+                    //04 sets item ID and qty for delivery goal
+                    //05 sets 3C744C (set timer)
+                    //06 decrements 3C744C until zero (wait for timer)
+                    //07 is display ID message (3 is first aux)
+                    //08 loops back to 0B (bookmark) if 03 fails, else it waits until player is in map arg1
+                    //09 is null?
+                    //0A seems to fetch quest supplies? -1 is always, -3 is if gs or bg, else arg is class
+                    //0B bookmark
+                    //0D sets 3C7450 to arg (set time left, in ticks)
+                    //0E increases 3C7450 by arg (increment time left, in ticks)
+                    //0F conditional start, look for playernum or -4 as arg, ends at 0x12 (use 0x11)
+                    //10 conditional start, look for 0x11s, if arg is -3, match bg (class 1 or 5)
+                    //   if arg is -2, if class 0, 2, 3, 4, do
+                    //   if arg is -4, or arg is class, do
+                    //11 start of condition branch
+                    //12 end of condition block!
+                    //16 is searched for on Quest_restart, when player dies
+                    //17 stores 3C7478 to 3C7476, then jumps to it (return to bookmark)
+                    //18 waits until action is no longer ocurring
+                    //1A is label
+                    //1B shows/starts timer. arg is label to jump to on time over
+                    //1C jumps to the specified label
+                    //1D checks the item quantity?
+                    //1E is trigger victory, end parse
+                    //1F is trigger failure, end parse
+                    //20 sets and syncs state arg1
+                    //21 waits for specified item in inventory? or does it have to be carried like egg?
+                    //22 is a "share item check" (checks if all items are delivered)
+                    //23 sets the label to jump to when items are delivered
+                    //24 checks the enemy quantity
+                    //25 shows a message and sends packet (time over?? failed arg != 0)
+                    //26 sends a packet (alternate for win?? presuccess arg != 0)
+                    //28 skips to 29 unless ??? (argument is repel damage)
+                    //2A checks fatalis health, skips until 2B unless dead?
+                    //2C sets a variable (3C758F), the label to jump to on fort falling
+                    //2D waits for all players to report they've achieved victory
+                    //2E sets state arg3 after arg2 arg1s have been slain
+                    //2F changes the time over label
+                    //FFFE sends a packet (camerafail, arg 0)
+                    //FFFF does the wyvern kill cam, sends packet (camerasuccess, arg 0)
+                }
                 ushort v2 = readShort(); //goal ID (cap quests use "wyvern" item with deliver goal here)
                 uint v3 = readInt(); //goal quantity
                 /*if (v1 == 0xFFFF)
@@ -658,13 +670,16 @@ namespace APX_Viewer
             filePos = (int)success;
             //read it
             //readShort();
+
             while (true)
             {
                 uint v = readInt();
                 if ((v & 0xFF) == 0 | (v & 0xFF00) == 0 | (v & 0xFF0000) == 0 | (v & 0xFF000000) == 0)
                     break;
             }
+
             filePos = (int)fail;
+
             //read it
             while (true)
             {
