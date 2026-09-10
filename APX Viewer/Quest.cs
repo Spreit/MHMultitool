@@ -763,7 +763,7 @@ namespace APX_Viewer
         {
             filePos = (int)offset;
 
-            List<Item> items = new List<Item>;
+            List<Item> items = new List<Item>();
 
             if (game != Game.MH2)
                 while (true)

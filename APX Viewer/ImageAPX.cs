@@ -1,9 +1,7 @@
-﻿using System;
-using System.Collections.Generic;
-using static APX_Viewer.FileBuffer;
-using System.Text;
+﻿using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
+using static APX_Viewer.FileBuffer;
 
 namespace APX_Viewer
 {
@@ -16,15 +14,16 @@ namespace APX_Viewer
         public struct Header
         {
             public uint totalLen;
-            public uint imageLen;
-            public uint palLen;
+            public uint pixelDataLen;
+            public ushort paletteLen;
+            public ushort unk0;
 
-            public ushort colorBit;
+            public ushort imageBitDepth;  // 8 or 4 BPP
             public ushort width;
             public ushort height;
-            public ushort mipmaps;
-            public ushort palBits;
-            public ushort palCount;
+            public ushort mipmaps;  // Always 1?
+            public ushort paletteBitDepth;  
+            public ushort paletteIndex; // Always 1?
 
             public ushort unk1;
             public ushort unk2;
@@ -32,61 +31,56 @@ namespace APX_Viewer
             public ushort unk4;
         }
 
+        public Header header;
+        public byte[] pixelData;
+        public byte[] paletteData;
+
         public void Parse()
         {
-            int filestart = filePos;
-            Debug.WriteLine("Texture Header Offset: " + filestart);
+            int textureHeaderOffset = filePos;
 
-            Header header;
+            Debug.WriteLine("Texture Header Offset: " + textureHeaderOffset);
 
-            header.totalLen = readInt();
-            header.imageLen = readInt();
-            header.palLen = readInt();
+            LoadHeader(textureHeaderOffset);
 
-            if (header.imageLen + header.palLen > header.totalLen)
+            if (header.pixelDataLen + header.paletteLen > header.totalLen)
             {
-                Debug.WriteLine("Image Length + Pallete length is larger that Total Length. Tried to fix it");
-                header.imageLen = header.imageLen & 0xFF00;
+                Debug.WriteLine("Pixel Data Length + Pallete length is larger that Total Length. Tried to fix it");
+                header.pixelDataLen = header.pixelDataLen & 0xFF00;
             }
 
-            header.colorBit = readShort();
-            header.width = readShort();
-            header.height = readShort();
-            header.mipmaps = readShort();
-            header.palBits = readShort();
-            header.palCount = readShort();
+            {
+                Debug.WriteLine("Image Offset: " + filePos);
 
-            header.unk1 = readShort();
-            header.unk2 = readShort();
-            header.unk3 = readShort();
-            header.unk4 = readShort();
+                Debug.WriteLine("Total Length:" + header.totalLen);
+                Debug.WriteLine("Image Length: " + header.pixelDataLen);
+                Debug.WriteLine("Palette length: " + header.paletteLen);
+                Debug.WriteLine("Unk0: " + header.unk0);
 
-            Debug.WriteLine("Image Offset: " + filePos);
+                Debug.WriteLine("Color Channel Depth: " + header.imageBitDepth);
+                Debug.WriteLine("Image dimensions: " + header.width + " X " + header.height);
+                Debug.WriteLine("Number of mipmaps: " + header.mipmaps);
+                Debug.WriteLine("Palette bits: " + header.paletteBitDepth);
 
-            Debug.WriteLine("Total Length:" + header.totalLen);
-            Debug.WriteLine("Image Length: " + header.imageLen);
-            Debug.WriteLine("Palette length: " + header.palLen);
+                Debug.WriteLine("Unknown 1: " + header.unk1);
+                Debug.WriteLine("Unknown 2: " + header.unk2);
+                Debug.WriteLine("Unknown 3: " + header.unk3);
+                Debug.WriteLine("Unknown 4: " + header.unk4);
+            }
 
-            Debug.WriteLine("Color Channel Depth: " + header.colorBit);
-            Debug.WriteLine("Image dimensions: " + header.width + " X " + header.height);
-            Debug.WriteLine("Number of mipmaps: " + header.mipmaps);
-            Debug.WriteLine("Palette bits: " + header.palBits);
+            int pixelDataOffset = textureHeaderOffset + APX_TEXTURE_HEADER_SIZE;
+            int paletteDataOffset = pixelDataOffset + (int)header.pixelDataLen;
 
-            Debug.WriteLine("Unknown 1: " + header.unk1);
-            Debug.WriteLine("Unknown 2: " + header.unk2);
-            Debug.WriteLine("Unknown 3: " + header.unk3);
-            Debug.WriteLine("Unknown 4: " + header.unk4);
+            int paletteColorCount = (int)(header.paletteLen / (header.paletteBitDepth / 8));
 
-            // Load palette
-            filePos += (int)header.imageLen; //  Palette offset
+            LoadPixelData(pixelDataOffset);
+            LoadPaletteData(paletteDataOffset);
 
-            Debug.WriteLine("Palette Offset: {0:X}", filePos);
+            // Load palette as drawing colors
+            Debug.WriteLine("Palette Offset: {0:X}", paletteDataOffset);
+            Debug.WriteLine("Palette Color Count: " + paletteColorCount);
 
-            int palEntries = (int)(header.palLen / (header.palBits / 8));
-
-            Debug.WriteLine("Palette Entries: " + palEntries);
-
-            List<Color> pal = LoadColorPalette(filePos, palEntries, header.palBits);
+            List<Color> pal = LoadColorPalette(paletteDataOffset, paletteColorCount, header.paletteBitDepth);
 
             // Make palette brushes
             List<SolidBrush> palBrushes = new List<SolidBrush>();
@@ -95,16 +89,60 @@ namespace APX_Viewer
                 palBrushes.Add(new SolidBrush(pal[i]));
 
             // Draw the image using palette brushes
-            filePos = filestart + APX_TEXTURE_HEADER_SIZE;  // Brush index offset
-
             img = new Bitmap(header.width, header.height);
 
-            DrawImageWithPaletteBrushes(img, header.colorBit, filePos, palBrushes);
+            DrawImageWithPaletteBrushes(img, header.imageBitDepth, pixelDataOffset, palBrushes);
 
         }
 
 
-        public List<Color> LoadColorPalette(int palOffset, int palEntries, int palBits)
+        public void LoadHeader(int offset)
+        {
+            filePos = offset;
+
+            header.totalLen = readInt();
+            header.pixelDataLen = readInt();
+            header.paletteLen = readShort();
+            header.unk0 = readShort();
+
+            header.imageBitDepth = readShort();
+            header.width = readShort();
+            header.height = readShort();
+            header.mipmaps = readShort();
+            header.paletteBitDepth = readShort();
+            header.paletteIndex = readShort();
+
+            header.unk1 = readShort();
+            header.unk2 = readShort();
+            header.unk3 = readShort();
+            header.unk4 = readShort();
+        }
+
+        public void LoadPixelData(int offset)
+        {
+            filePos = offset;
+
+            pixelData = new byte[header.pixelDataLen];
+
+            for (int i = 0; i < header.pixelDataLen; i++)
+            {
+                pixelData[i] = readByte();
+            }
+        }
+
+        public void LoadPaletteData(int offset)
+        {
+            filePos = offset;
+
+            paletteData = new byte[header.paletteLen];
+
+            for (int i = 0; i < header.paletteLen; i++)
+            {
+                paletteData[i] = readByte();
+            }
+        }
+
+        public List<Color> LoadColorPalette(int palOffset, int palEntries, int paletteColorDepth)
         {
             filePos = palOffset;
 
@@ -119,7 +157,7 @@ namespace APX_Viewer
                 byte g = 0x0;
                 byte b = 0x0;
 
-                if (palBits == 4)
+                if (paletteColorDepth == 4)
                 {
                     byte arByte = readByte();
                     byte gbByte = readByte();
@@ -129,7 +167,7 @@ namespace APX_Viewer
                     g = (byte)(gbByte & 0xF0);
                     b = (byte)((gbByte << 4) & 0xF0);
                 }
-                else if (palBits == 16) //ABGR1555 format, two bytes per entry
+                else if (paletteColorDepth == 16) //ABGR1555 format, two bytes per entry
                 {
                     ushort s = readShort();
                     a = (byte)(((s & 0x8000) == 0x8000) ? 0xFF : 0x00);
@@ -137,7 +175,7 @@ namespace APX_Viewer
                     g = (byte)((s >> 2) & 0xF1);
                     r = (byte)((s << 3) & 0xF1);
                 }
-                else if (palBits == 32)
+                else if (paletteColorDepth == 32)
                 {
                     if (wii) //wii order
                     {
@@ -163,7 +201,7 @@ namespace APX_Viewer
             return palette;
         }
 
-        void DrawImageWithPaletteBrushes(Bitmap img, int pixelBits, int brushIndexStartOffset, List<SolidBrush> palBrushes)
+        void DrawImageWithPaletteBrushes(Bitmap img, int imageBitDepth, int brushIndexStartOffset, List<SolidBrush> palBrushes)
         {
             filePos = brushIndexStartOffset;
 
@@ -178,13 +216,13 @@ namespace APX_Viewer
                 {
                     brushIndex = readByte();
 
-                    if (pixelBits == 4)  // Two brushes per byte
+                    if (imageBitDepth == 4)  // Two brushes per byte
                     {
                         gfx.FillRectangle(palBrushes[brushIndex >> 4], x + 1, y, 1, 1);
                         gfx.FillRectangle(palBrushes[brushIndex & 0x0F], x, y, 1, 1);
                         x++;
                     }
-                    if (pixelBits == 8)
+                    if (imageBitDepth == 8)
                     {
                         gfx.FillRectangle(palBrushes[brushIndex], x, y, 1, 1);
                     }
